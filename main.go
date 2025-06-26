@@ -1,12 +1,5 @@
 package main
 
-/*
-#cgo LDFLAGS: -lfftw3f
-#include <complex.h>
-#include <fftw3.h>
-*/
-import "C"
-
 import (
 	"encoding/binary"
 	"fmt"
@@ -16,7 +9,6 @@ import (
 	"math"
 	"math/cmplx"
 	"os"
-	"unsafe"
 
 	"gioui.org/app"
 	"gioui.org/f32"
@@ -27,6 +19,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/widget"
+	"github.com/argusdusty/gofft"
 )
 
 func hue2rgb(p float64, q float64, t float64) float64 {
@@ -106,16 +99,12 @@ func create_image(filename string) image.Image {
 	a0 := 25. / 46.
 	R := 128
 
-	window := make([]float32, SIZE)
+	window := make([]float64, SIZE)
 	for i := 0; i < SIZE; i++ {
-		window[i] = (float32)(a0 - (1.0-a0)*(math.Cos(2.0*math.Pi*(float64)(i)/(float64)(SIZE-1))))
+		window[i] = a0 - (1.0-a0)*(math.Cos(2.0*math.Pi*(float64)(i)/(float64)(SIZE-1)))
 	}
 
-	fftw_in := (*C.float)(unsafe.Pointer((uintptr)(C.fftwf_malloc((C.ulong)(unsafe.Sizeof(C.float(0))) * (C.ulong)(SIZE)))))
-	fftw_in_slice := unsafe.Slice(fftw_in, SIZE)
-	fftw_out := (*C.complexfloat)(unsafe.Pointer((uintptr)(C.fftwf_malloc((C.ulong)(unsafe.Sizeof(C.fftwf_complex(0))) * (C.ulong)(SIZE/2+1)))))
-	fftw_out_slice := unsafe.Slice(fftw_out, SIZE/2+1)
-	plan := C.fftwf_plan_dft_r2c_1d((C.int)(SIZE), fftw_in, fftw_out, C.FFTW_ESTIMATE)
+	work := make([]complex128, SIZE)
 
 	width := (int)(len) / R
 	height := SIZE / 2
@@ -129,14 +118,13 @@ func create_image(filename string) image.Image {
 	for i := 0; i < width; i++ {
 		index := ((len - SIZE) * i) / (width - 1)
 		for j := 0; j < SIZE; j++ {
-			fftw_in_slice[j] = (C.float)(((float32)(buf[index+j]) - 2048.0) * window[j])
+			work[j] = complex(((float64)(buf[index+j])-2048.0)*window[j], 0)
 		}
-		C.fftwf_execute(plan)
+		gofft.FFT(work)
 
 		count_more_05 := 0
 		for j := 0; j < height; j++ {
-			outf := (complex128)(fftw_out_slice[j])
-			z := math.Log10(cmplx.Abs(outf))
+			z := math.Log10(cmplx.Abs(work[j]))
 
 			ang := (z + 0.4) / (6 + 0.4)
 
@@ -165,10 +153,6 @@ func create_image(filename string) image.Image {
 		 } */
 	}
 	fmt.Printf("%g %g\n", min, max)
-
-	C.fftwf_free(unsafe.Pointer(fftw_in))
-	C.fftwf_free(unsafe.Pointer(fftw_out))
-	C.fftwf_destroy_plan(plan)
 	return image
 }
 
